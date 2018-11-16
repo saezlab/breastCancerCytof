@@ -1,13 +1,34 @@
 # from the most recent Xiaokang PKN: 15.11.2018
+# last modified 16.11.2018
+# changes:
+#	--- 15.11.2018 ----
+#	- added 2 AKT psites
+#	- ERK12_Y187 is converted to ERK12
+#	--- 16.11.2018 ----
+# 	- PLCG2 --> PKC (plcgamma opens Ca+ channels that activates PKC)
+#	- PKC: phosphorylates RAF1 (activation or inhibition? - kegg MAPK: activation);
+#			- PDK1 could also phosphorylate PKC directly (KEGG pi3K-AKT Pw)
+#			- mTORC2 activates PKC (Kegg mTOR pathway)
+#			- PKC phosphorylates GSK3B-ser9 --> inhibition: SIGNOR,
+#	PLCG2 --> MARCKS is replaced by PLCG2 --> PKC -->MARCKS
+#   PLCG2 can be activatd by all kind of RTKs: EGFR, MET
+#   AKT psite modelling was :
+#			AKT_S473	1	and7
+#			AKT_T308	1	and7
+#			PIP3	1	and7
+#			and7	1	AKT
+#	but then I replaced with OR gates. Because for partial activation, 1 psite is enough
+#		lets see later if we need 2-ands with PIP3 (AKT must go to membraine before activation)
+PLCg2	1	PKC
+MET	1	PLCg2
+PKC	1	RAF
+PKC	1	GSK3B
 mTOR	1	p70S6K
 mTOR	1	AKT_S473  # through mTORC2
-# mTOR	1	mTORC1
-# mTORC2	1	AKT_S473
 PDPK1	1	AKT_T308
-AKT_S473	1	and7
-AKT_T308	1	and7
-PIP3	1	and7
-and7	1	AKT
+AKT_S473	1	AKT
+AKT_T308	1	AKT
+PIP3	1	AKT
 p38	1	p53
 p38	1	MAPKAPK2
 GSK3B	1	PTEN
@@ -28,7 +49,7 @@ AKT	1	CREB
 MAPKAPK2	1	CREB
 PIP3	1	PDPK1
 PDPK1	1	p70S6K
-PLCg2	1	MARCKS
+PKC	1	MARCKS
 SRC	1	PLCg2
 SRC	1	BTK
 SRC	1	FAK
