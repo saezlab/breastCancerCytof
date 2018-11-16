@@ -1,7 +1,7 @@
 # prepare data
 # Author: A. Gabor.
 # date: 14.09.2018
-# import data from Maco:
+# import data from Marco:
 # there are 2 datasets:
 #   - Median_allsamples_nocontrols_withcellcount.rds  I got  a bit later, but
 #		contains cell counts
@@ -37,6 +37,23 @@ colnames(celline_data_raw)[which(colnames(celline_data_raw)=="dmt$cellcount")] =
 head(celline_data_raw)
 
 celline_data = celline_data_raw
+
+# rename markers ---------------------------------------------------------------
+markers = colnames(celline_data)[5:38]
+
+markers[which(markers=="p-Akt(Ser473)")] = "p-AKT_S473"
+markers[which(markers=="p-MKK3-MKK6")] = "p-MKK36"
+markers[which(markers=="p-AKT(Thr308)")] = "p-AKT_T308"
+markers[which(markers=="p-S6K")] = "p-p70S6K"
+markers[which(markers=="p-ERK")] = "p-ERK12"
+markers[which(markers=="p-MEK")] = "p-MEK12_S221"
+markers[which(markers=="p-GSK3b")] = "p-GSK3B"
+
+celline_data$treatment = as.character(celline_data$treatment)
+celline_data$treatment = gsub("iMEK","iMEK12",celline_data$treatment,fixed = T)
+
+
+colnames(celline_data)[5:38] = markers
 # time courses by cell lines ----------------------------------------------
 markers = colnames(celline_data)[5:38]
 cell_lines = as.character(unique(celline_data$cell_line))
@@ -135,10 +152,11 @@ cell_lines = as.character(unique(celline_data_melted_ext$cell_line))
 # do naming manipulation if neccessary !
 reporters = as.character(unique(celline_data_melted_ext$markers))
 
-treatments = c("EGF","iEGFR", "iMEK", "imTOR","iPI3K","iPKC")
+treatments = c("EGF","iEGFR", "iMEK12", "imTOR","iPI3K","iPKC")
 library(progress)
 pb = progress_bar$new(total=length(cell_lines))
 
+# iCell_line = 1
 for(iCell_line in 1:length(cell_lines)){
 	pb$tick()
 	#cno_data = filter(celline_data_melted_ext,cell_line == "T47D", treatment != "full")
@@ -149,9 +167,9 @@ for(iCell_line in 1:length(cell_lines)){
 	timepoints = sort(unique(cno_data$time))
 
 	cno = list()
-	cno$namesCues = c("EGF","SERUM", "EGFR", "MEK", "mTOR", "PI3K", "PKC")
+	cno$namesCues = c("EGF","SERUM", "EGFR", "MEK12", "mTOR", "PI3K", "PKC")
 	cno$namesStimuli = c("EGF","SERUM")
-	cno$namesInhibitors = c("EGFR", "MEK", "mTOR", "PI3K", "PKC")
+	cno$namesInhibitors = c("EGFR", "MEK12", "mTOR", "PI3K", "PKC")
 	cno$namesSignals = reporters
 	cno$timeSignals = timepoints
 
@@ -243,7 +261,7 @@ for(iCell_line in 1:length(cell_lines)){
 	cno$valueSignals = valueSignals
 
 
-	writeMIDAS(CNOlist(cno),filename = paste0('data/MIDAS/',cell_lines[[iCell_line]],".csv"))
+	writeMIDAS(CNOlist(cno),filename = paste0('data/MIDAS_v2//',cell_lines[[iCell_line]],".csv"))
 	#plot(CNOlist(paste0('data/MIDAS/',cell_lines[[iCell_line]],".csv")))
 }
 
