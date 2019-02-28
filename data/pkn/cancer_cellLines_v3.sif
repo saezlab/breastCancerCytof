@@ -1,0 +1,180 @@
+# from the most recent Xiaokang PKN: 15.11.2018
+# last modified 16.11.2018
+# changes:
+#   ---- 08/09.01.2019 ----
+# 	- update name to v3
+#	- adding updates based on the first fitting results and after consulting with Marco:
+#	- adding NFkB: regulated by TNFa signaling, which is not modelled
+#		- usually IKK -> IkappaBalpha -> NFKB-p65, but we simplify
+#		- by AKT -> iKK -> NFkB (Kegg, pi3K-AKT PW): => AKT -> NFKB (high correlation wit AKT_S473)
+#		- cAMP -> PKA -> ikk, (Kegg, cAMP PW, Marco) - connect SERUM to cAMP to model
+#		- p38 -> MSK12 -> NFkB (Marco)
+# 		- PLCg -> PKC -> NFkB (Kegg, nf-Kappa Beta PW)
+#		- left out: GSK3B also can phosphorylate NFKB - not added yet
+#	- adding AMPK:
+#		- AMPK negatively regulates mTOR(based on kegg mTOR signaling)
+#		- input: not clear, connected to SERUM
+#		- corr/cov data may suggest: AMPK - MKK4, H3, p90RSK
+#	- adding SMAD23:
+#  	(Marco) SMAD23 activated by Serum; Smad23 is inhibited by ERK;
+#			SMAD3 activates mTOR via inhibition of Deptor;
+#			SMAD23 is inhibited by STAT1 (via SMAD7)
+# 	measured phosphosite: Phospho-Smad2 (Ser465/467)/Smad3 (Ser423/425) --> checking Signor for kinases
+#		! according to Signor, SMAD2 is activated by ERK12 via phosphorylation on many p-Sites
+#		all measured p-Sites of SMAD2 and SMAD3 are targeted by TGFBR1 only (Signor) -> no adding inhibitors on it
+#		we dont measure donwstreams of it (based on KEGG tgf-beta PW)
+#		-	adding:  SERUM -> SMAD23
+#		- corr/cov data suggest: SMAD23 - AKT_T308 (interesting AKT_T308 is psohpso by the PDPK1, not mTOR);
+#								SMAD - 4EBP1, and cleavedCas
+#	- adding H3: MARCO: p90RSK to H3 and also by p-38 via MSK1/2, MSK1/2 can be activated also by ERK1/2 and SAPK2 (which in turn can be activated by MKK3/MKK6)
+#		- p90RSK -> H3
+#		- MSK12	-> H3 (MSK12 added above same update)
+#		- MKK36 -> SAPK2 -> MSK12  (simplify SAPK2 out)
+#		- ERK12 -> MSK12
+#		- correlation data also suggests connection with GSK3B
+#	- adding cleavedCas: MARCO: cleavedCas inhibited by PKC and promoted by p-p53 and SMAD23
+#		- p53 -> cleavedCas
+#		- SMAD23 -> cleavedCas
+#		- correlation data also suggests connection with 4EBP1
+#	- adding RB: measured psite S807/811, CST)
+#		according to the data, there is large change between cell lines. Using the scaling by the range hides the dynamics.
+#		TODO: maybe for this marker we could consider the relative change with respect to the initial condition.
+#		Marco: GSK3b inhibits pRB trough CyclinD and CDK4/6;
+#			 	p-p53 inhibits pRB trough p21 and CDK2;
+#				also SMAD3 inhibits CDK4/6 (via p15) and consequently pRB;
+#				NFkB can also lead to CyclinD and consequently p-RB;
+#				cyclin D is also activated by ERK and Stat5 (via NFkB)
+#		not this is inhibition by phosphorylation and we measure phospho
+#		- Adding AMPK -> RB  (Signor, S811)
+#		- adding p53 -> pRB (Marco)
+#		- adding GSK3B -> pRB (Marco)
+#	- tweaks used in Xiaokang's PKN removed:
+#		ERK12_Y187 removed
+#		MEK_S221 & RAF -> MEK12  is simplified as RAF -> MEK_S221 -> MEK12
+#
+#	--- 15.11.2018 ----
+#	- added 2 AKT psites
+#	- ERK12_Y187 is converted to ERK12
+#	--- 16.11.2018 ----
+# 	- PLCG2 --> PKC (plcgamma opens Ca+ channels that activates PKC)
+#	- PKC: phosphorylates RAF1 (activation or inhibition? - kegg MAPK: activation);
+#			- PDK1 could also phosphorylate PKC directly (KEGG pi3K-AKT Pw)
+#			- mTORC2 activates PKC (Kegg mTOR pathway)
+#			- PKC phosphorylates GSK3B-ser9 --> inhibition: SIGNOR,
+#	PLCG2 --> MARCKS is replaced by PLCG2 --> PKC -->MARCKS
+#   PLCG2 can be activatd by all kind of RTKs: EGFR, MET
+#   AKT psite modelling was :
+#			AKT_S473	1	and7
+#			AKT_T308	1	and7
+#			PIP3	1	and7
+#			and7	1	AKT
+#	but then I replaced with OR gates. Because for partial activation, 1 psite is enough
+#		lets see later if we need 2-ands with PIP3 (AKT must go to membraine before activation)
+#  --- 19.11.2018 -----
+#	- eliminated multiple reactions between same nodes (read.table, unique, write.table)
+p53	1	RB
+GSK3B	1	RB
+AMPK	1	RB
+p53	1	cleavedCas
+SMAD23	1	cleavedCas
+ERK12	1	MSK12
+MKK36	1	MSK12
+MSK12	1	H3
+p90RSK	1	H3
+SERUM	1	SMAD23
+SERUM	1	AMPK
+AMPK	-1	mTOR
+AKT	1	NFkB
+SERUM	1	cAMP
+cAMP	1	PKA
+PKA	1	NFkB
+PKC	1	NFkB
+p38	1	MSK12
+MSK12	1	NFkB
+PLCg2	1	PKC
+MET	1	PLCg2
+PKC	1	RAF
+PKC	1	GSK3B
+mTOR	1	p70S6K
+mTOR	1	AKT_S473
+PDPK1	1	AKT_T308
+AKT_S473	1	AKT
+AKT_T308	1	AKT
+PIP3	1	AKT
+p38	1	p53
+p38	1	MAPKAPK2
+GSK3B	1	PTEN
+GSK3B	1	mTOR
+GSK3B	1	b-catenin
+p70S6K	1	S6
+p90RSK	1	CREB
+p90RSK	1	S6
+ERK12	1	MKK36
+ERK12	1	MAPKAPK2
+ERK12	1	ERK12_dm2
+RAS	1	PI3K
+BTK	1	PLCg2
+AKT	1	mTOR
+AKT	1	GSK3B
+AKT	1	RAF_S259
+AKT	1	CREB
+MAPKAPK2	1	CREB
+PIP3	1	PDPK1
+PDPK1	1	p70S6K
+PKC	1	MARCKS
+SRC	1	PLCg2
+SRC	1	BTK
+SRC	1	FAK
+EGFR	1	PI3K
+EGFR	1	PLCg2
+EGFR	1	EGFR_FB
+PDPK1	1	MEK12_S221
+RAF	1	MEK12_S221
+mTOR	1	4EBP1
+GSK3B	1	4EBP1
+ERK12	1	4EBP1
+p38	1	4EBP1
+ERK12	1	p90RSK
+PI3K	1	SYK
+SYK	1	BTK
+MKK4	1	JNK
+PI3K	1	MAP3Ks
+INSR	1	PI3K
+PI3K	1	PAK
+PAK	1	S6
+MET	1	PI3K
+MET	1	FAK
+BTK	1	STAT5
+EGFR	1	and1
+ERK12_dm2	-1	and1
+and1	1	RAS
+PTEN	-1	and2
+PI3K	1	and2
+and2	1	PIP3
+EGFR_FB	-1	and3
+EGF	1	and3
+and3	1	EGFR
+RAS	1	and4
+RAF_S259	-1	and4
+and4	1	RAF
+MEK12_S221	1	MEK12
+MEK12	1	ERK12
+SRC	1	p38
+MKK36	1	p38
+MKK4	1	p38
+RAS	1	JNK
+FAK	1	ERK12
+PAK	1	MKK4
+MAP3Ks	1	MKK4
+EGFR	1	STAT1
+p38	1	STAT1
+EGFR	1	STAT3
+SRC	1	STAT3
+EGFR	1	STAT5
+SRC	1	STAT5
+EGFR	1	SRC
+PI3K	1	SRC
+SERUM	1	MET
+SERUM	1	PAK
+SERUM	1	INSR
+SERUM	1	EGFR
