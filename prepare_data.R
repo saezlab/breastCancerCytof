@@ -19,7 +19,14 @@
 #		the real measurements/interpolated measurements. -- This should be checked in some
 #		cases, because the 2 time courses might be significantly different.
 # 5. export to MIDAS files. We build CNOlist structures and export the data to MIDAS file.
-
+#
+#  MIDAS versions:
+#	- not sure what is the difference between MIDAS_v1 and MIDAS_v2, but v2 showed good fit to data
+#	- MIDAS v3 (16.jan. 2019) we add a control experiment to the MIDAS to
+#	   ensure steady state and to force the model to capture dynamics bc of inputs.
+#		also cues were scaled to 0.75: problem with full activation (1) is that
+#		the corresponding edge aprameters are non-indentifiables
+#	- MIDAS v4 fixing the problem with midas v3: inhibitor values were also set to .75 by mistake
 
 library(reshape2)
 library(ggplot2)
@@ -161,6 +168,8 @@ for(iCell_line in 1:length(cell_lines)){
 	pb$tick()
 	#cno_data = filter(celline_data_melted_ext,cell_line == "T47D", treatment != "full")
 	cno_data = filter(celline_data_melted_ext,cell_line == cell_lines[[iCell_line]], treatment != "full")
+
+
 	cno_data[cno_data$time=="0short"] = "0"
 	cno_data$time = as.numeric(as.character(cno_data$time))
 
@@ -173,10 +182,19 @@ for(iCell_line in 1:length(cell_lines)){
 	cno$namesSignals = reporters
 	cno$timeSignals = timepoints
 
-	cno$valueCues = matrix(0,nrow = 6,ncol = 7)
+	# MIDAS v2:
+	# cno$valueCues = matrix(0,nrow = 6,ncol = 7)
+	# colnames(cno$valueCues) = cno$namesCues
+	# cno$valueCues[2:6,3:7] = diag(5)
+	# cno$valueCues[,c("EGF","SERUM")] = 1
+
+	# MIDAS v3/v4:
+	cno$valueCues = matrix(0,nrow = 7,ncol = 7)
 	colnames(cno$valueCues) = cno$namesCues
-	cno$valueCues[2:6,3:7] = diag(5)
+	cno$valueCues[3:7,3:7] = diag(5)
 	cno$valueCues[,c("EGF","SERUM")] = 1
+	cno$valueCues[1,c("EGF","SERUM")] = c(0,0.4)
+	cno$valueCues[2:7,1:2] = 0.75   # v3: cno$valueCues[2:7,cno$valueCues==1] = 0.75
 
 	cno$valueInhibitors = cno$valueCues[,cno$namesInhibitors]
 
@@ -256,12 +274,23 @@ for(iCell_line in 1:length(cell_lines)){
 		cno_data_t = filter(cno_data_combined,time==act_time)
 		formated_S = dcast(filter(cno_data_t,time==act_time),time+treatments~markers,value.var = "combined_signal",fill = NA)
 
+		# MIDAS v3 ---
+		if(time_ind == 1){
+			control_Signal = formated_S[1,]
+			# save time point 0 and use this values  along each timepoint.
+		}
+		formated_S = rbind(control_Signal, formated_S)
+		# adds the time 0 to each timepoint
+		# -- end MIDAS v3
+
+
 		valueSignals[[time_ind]] = as.matrix(formated_S[,markers])
 	}
 	cno$valueSignals = valueSignals
 
-
-	writeMIDAS(CNOlist(cno),filename = paste0('data/MIDAS_v2//',cell_lines[[iCell_line]],".csv"))
+	writeMIDAS(CNOlist(cno),filename = paste0('data/MIDAS_v4//',cell_lines[[iCell_line]],".csv"))
+	# writeMIDAS(CNOlist(cno),filename = paste0('data/MIDAS_v3//',cell_lines[[iCell_line]],".csv"))
+	#writeMIDAS(CNOlist(cno),filename = paste0('data/MIDAS_v2//',cell_lines[[iCell_line]],".csv"))
 	#plot(CNOlist(paste0('data/MIDAS/',cell_lines[[iCell_line]],".csv")))
 }
 
@@ -346,3 +375,136 @@ ggplot(
 # !!! p-ERK measurement drops at T7 on TWO plates strongly and on many plates slightly, what is the interpretation of this ?
 
 
+### Merge A+B time courses and plot responses ---------------------------------
+
+
+celline_data_raw = readRDS("./data/Median_allsamples_nocontrols_withcellcount.rds")
+# merge in basically the cellcount only
+colnames(celline_data_raw)[which(colnames(celline_data_raw)=="dmt$cellcount")] ="cell_count"
+celline_data = celline_data_raw
+
+# rename markers ---------------------------------------------------------------
+markers = colnames(celline_data)[5:38]
+
+markers[which(markers=="p-Akt(Ser473)")] = "p-AKT_S473"
+markers[which(markers=="p-MKK3-MKK6")] = "p-MKK36"
+markers[which(markers=="p-AKT(Thr308)")] = "p-AKT_T308"
+markers[which(markers=="p-S6K")] = "p-p70S6K"
+markers[which(markers=="p-ERK")] = "p-ERK12"
+markers[which(markers=="p-MEK")] = "p-MEK12_S221"
+markers[which(markers=="p-GSK3b")] = "p-GSK3B"
+
+celline_data$treatment = as.character(celline_data$treatment)
+celline_data$treatment = gsub("iMEK","iMEK12",celline_data$treatment,fixed = T)
+
+colnames(celline_data)[5:38] = markers
+
+# time courses by cell lines ----------------------------------------------
+markers = colnames(celline_data)[5:38]
+cell_lines = as.character(unique(celline_data$cell_line))
+
+celline_data_melted = melt(celline_data,measure.vars = markers,
+						   variable.name = "markers",value.name = "signal")
+
+
+
+
+
+cell_lines = as.character(unique(celline_data_melted_ext$cell_line))
+
+# do naming manipulation if neccessary !
+reporters = as.character(unique(celline_data_melted_ext$markers))
+
+celline_data_melted$time[as.character(celline_data_melted$time)=="0short"] = 0
+celline_data_melted$time = as.numeric(as.character(celline_data_melted$time))
+
+celline_data_melted_ABmean = ddply(filter(celline_data_melted,treatment!="full"),.(cell_line),function(CL_data){
+	# CL_data = filter(celline_data_melted,cell_line == "HCC1428")
+	timepoints = sort(unique(CL_data$time))
+
+	req_time = timepoints
+	cno_data_combined = ddply(CL_data,.(markers,treatment),function(df){
+
+		#df = filter(CL_data,treatment=="EGF",markers=="IdU")
+		#df = filter(CL_data,treatment=="iPI3K",markers=="p-S6")
+
+		df = df[order(df$time),]
+		timecourse_A = filter(df,time_course=="A")
+		timecourse_B = filter(df,time_course=="B")
+
+		y_interp_A = approx(timecourse_A$time,timecourse_A$signal,req_time, method = "linear",rule=2)
+		y_interp_B = approx(timecourse_B$time,timecourse_B$signal,req_time, method = "linear",rule=2)
+
+		# plot(timecourse_A$time,timecourse_A$signal, col="blue",type="b")
+		# lines(timecourse_B$time,timecourse_B$signal, col="red" ,type="b")
+		# points(y_interp_A$x,y_interp_A$y,col="blue")
+		# points(y_interp_B$x,y_interp_B$y,col="red")
+
+		meanSignal = (y_interp_A$y + y_interp_B$y)/2
+		sdSignal = abs(y_interp_A$y - y_interp_B$y)/sqrt(2)
+		dfnew = data.frame(time=req_time,combined_signal=meanSignal,sdSignal=sdSignal)
+
+	})
+
+} ,.progress = progress_text())
+
+
+
+
+
+
+celline_data_melted_ABmean_scaled = ddply(celline_data_melted_ABmean, .(markers), function(df){
+	#df = filter(celline_data_melted,markers=="IdU")
+
+	q99 = quantile(df$combined_signal,probs = c(0.005,0.995))
+	df$scaled_signal = (df$combined_signal - q99[[1]])/(q99[[2]]-q99[[1]])
+	df$scaled_signal[df$scaled_signal>1] = 1
+	df$scaled_signal[df$scaled_signal<0] = 0
+	return(df)
+})
+# plot the A-B mean/merged time course for individual  cell-line markers:
+
+if(regenerateFigures){
+	pdf("figures/cellLine_timecourse_raw_AB_merged.pdf",width = 14,height = 7)
+	for(selected_cell_line in cell_lines){
+		#selected_cell_line = "HCC1428"  "MDAMB157" "MX1"
+		gg_data = filter(celline_data_melted_ABmean,cell_line==selected_cell_line)
+		#gg_data$grouping = paste(gg_data$time_course, gg_data$treatment,sep = "_")
+		gg = ggplot(gg_data,aes(time,combined_signal,col=treatment)) +
+			geom_point() + geom_line(aes(group=treatment)) +
+			facet_wrap(~markers,scales = "free_y") + ggtitle(selected_cell_line) + theme_bw() +
+			xlab("time")+ expand_limits(y=0) +  scale_color_manual(values = c("#000000",RColorBrewer::brewer.pal(9,"Set1")))
+
+		print(gg)
+	}
+	dev.off()
+
+
+	pdf("figures/psite_timecourse_raw_AB_merged.pdf",width = 14,height = 9)
+
+	d_ply(celline_data_melted_ABmean,.(markers),function(gg_data){
+		# gg_data = filter(celline_data_melted_ABmean,markers=="p-ERK12")
+		gg = ggplot(gg_data,aes(time,combined_signal,col=treatment)) +
+			geom_point() + geom_line(aes(group=treatment)) +
+			facet_wrap(~cell_line,scales = "free_y") + ggtitle(as.character(gg_data$markers[[1]])) + theme_bw() +
+			xlab("time")+ expand_limits(y=0) +  scale_color_manual(values = c("#000000",RColorBrewer::brewer.pal(9,"Set1")))
+		print(gg)
+
+	},.progress = progress_text())
+
+	dev.off()
+
+	pdf("figures/psite_timecourse_scaled_AB_merged.pdf",width = 14,height = 9)
+
+	d_ply(celline_data_melted_ABmean_scaled,.(markers),function(gg_data){
+		# gg_data = filter(celline_data_melted_ABmean,markers=="p-ERK12")
+		gg = ggplot(gg_data,aes(time,scaled_signal,col=treatment)) +
+			geom_point() + geom_line(aes(group=treatment)) +
+			facet_wrap(~cell_line,scales = "free_y") + ggtitle(as.character(gg_data$markers[[1]])) + theme_bw() +
+			xlab("time")+ ylim(c(0,1)) +  scale_color_manual(values = c("#000000",RColorBrewer::brewer.pal(9,"Set1")))
+		print(gg)
+
+	},.progress = progress_text())
+
+	dev.off()
+}

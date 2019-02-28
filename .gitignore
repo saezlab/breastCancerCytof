@@ -35,3 +35,23 @@ vignettes/*.pdf
 # Shiny token, see https://shiny.rstudio.com/articles/shinyapps.html
 rsconnect/
 .Rproj.user
+
+
+# not upload figures
+/figures/
+
+# Rmd spin folder 
+/figure/
+*.pdf
+
+# data in csv and tsv file
+/data/*.csv
+/data/*.tsv
+
+# features generated from models
+/features/
+
+data/*
+!data/pkn/*.sif
+
+
