@@ -118,58 +118,92 @@ save(feature_table_2,file=paste0(feature_folder,"/feature_table_2_edge_mean_acti
 
 
 ### Model feautures 2.2 : timecourse edge strenght -----------------------------
-timecourse_strength_to_feature = function(model){
-	reacData = getReactionActivity_logicModel(self = model)
-	return(reacData$timecourse)
+if(FALSE){
+	timecourse_strength_to_feature = function(model){
+		reacData = getReactionActivity_logicModel(self = model)
+		return(reacData$timecourse)
+	}
+
+	feature_table_2_2 = ldply(calibrated_models,function(M){
+		features = timecourse_strength_to_feature(model = M)
+	},.id = "cell_line" ,.progress = progress_text())
+
+
+	feature_table_2_2_timecourse_edge_strength = dcast(feature_table_2_2,cell_line+exp+time+modelName~reacID,value.var = "y")
+	# remove the control exp
+	feature_table_2_2_timecourse_edge_strength = feature_table_2_2_timecourse_edge_strength[feature_table_2_2_timecourse_edge_strength$exp != "exp 1",]
+
+	save(feature_table_2_2_timecourse_edge_strength,file=paste0(feature_folder,"/feature_table_2_time_course_activity.RData"))
+}else{
+
+	# import and interpolate for all timepoints
+	load(file=paste0(feature_folder,"/feature_table_2_time_course_activity.RData"))
+	# load variable feature_table_2_2_timecourse_edge_strength
 }
-
-feature_table_2_2 = ldply(calibrated_models,function(M){
-	features = timecourse_strength_to_feature(model = M)
-},.id = "cell_line" ,.progress = progress_text())
-
-
-feature_table_2_2_timecourse_edge_strength = dcast(feature_table_2_2,cell_line+exp+time+modelName~reacID,value.var = "y")
-# remove the control exp
-feature_table_2_2_timecourse_edge_strength = feature_table_2_2_timecourse_edge_strength[feature_table_2_2_timecourse_edge_strength$exp != "exp 1",]
-
-save(feature_table_2_2_timecourse_edge_strength,file=paste0(feature_folder,"/feature_table_2_time_course_activity.RData"))
-
-
-# import and interpolate for all timepoints
-load(file=paste0(feature_folder,"/feature_table_2_time_course_activity.RData"))
-# load variable feature_table_2_2_timecourse_edge_strength
-
 head(feature_table_2_2_timecourse_edge_strength)
-unique_time = unique(feature_table_2_2_timecourse_edge_strength$time)
+
+colnames(feature_table_2_2_timecourse_edge_strength)[[2]] = "treatment"
+feature_table_2_2_timecourse_edge_strength$treatment = as.character(feature_table_2_2_timecourse_edge_strength$treatment)
+feature_table_2_2_timecourse_edge_strength$treatment[feature_table_2_2_timecourse_edge_strength$treatment == "exp 2"] = "EGF"
+feature_table_2_2_timecourse_edge_strength$treatment[feature_table_2_2_timecourse_edge_strength$treatment == "exp 3"] = "iEGFR"
+feature_table_2_2_timecourse_edge_strength$treatment[feature_table_2_2_timecourse_edge_strength$treatment == "exp 4"] = "iMEK"
+feature_table_2_2_timecourse_edge_strength$treatment[feature_table_2_2_timecourse_edge_strength$treatment == "exp 5"] = "imTOR"
+feature_table_2_2_timecourse_edge_strength$treatment[feature_table_2_2_timecourse_edge_strength$treatment == "exp 6"] = "iPI3K"
+feature_table_2_2_timecourse_edge_strength$treatment[feature_table_2_2_timecourse_edge_strength$treatment == "exp 7"] = "iPKC"
+
+# summary of features:
+
+unique_conds = unique(feature_table_2_2_timecourse_edge_strength[,c("treatment","time","cell_line")])
+
+condition_time_dist = dcast(unique_conds,treatment~time,value.var = "cell_line")
+write.csv(condition_time_dist,file.path(feature_folder,"condition_time_dist_before.csv"))
+
+if(FALSE){
+	# produce feature from each cell line for each time point:
+	unique_time = unique(feature_table_2_2_timecourse_edge_strength$time)
+
+	feature_cols = grep("=", colnames(feature_table_2_2_timecourse_edge_strength))
+
+	feature_table_2_3_full_timecourse_edge_strength = ddply(feature_table_2_2_timecourse_edge_strength,.(cell_line,exp),function(df){
+		# df = filter(feature_table_2_3_full_timecourse_edge_strength,cell_line=="184A1",exp=="exp 3")
+		# approx(x=df$time,y = df$`PIP3=AKT_S473`,xout = unique_time)
+		interp_matrix = apply(df[,feature_cols],2,function(col_dat){approx(x = df$time,y=col_dat,xout = unique_time,method = "linear",rule = 2)[['y']]})
+		cbind(time=unique_time,interp_matrix)
+	})
+
+	# exp 1 — not included
+	# exp 2 —  EGF+SERUM
+	# exp 3 — iEGFR
+	# exp 4 — iMEK
+	# exp 5 — imTOR
+	# exp 6 — iPI3K
+	# exp 7 — iPKC
+	colnames(feature_table_2_3_full_timecourse_edge_strength)[[2]] = "treatment"
+	feature_table_2_3_full_timecourse_edge_strength$treatment = as.character(feature_table_2_3_full_timecourse_edge_strength$treatment)
+	feature_table_2_3_full_timecourse_edge_strength$treatment[feature_table_2_3_full_timecourse_edge_strength$treatment == "exp 2"] = "EGF"
+	feature_table_2_3_full_timecourse_edge_strength$treatment[feature_table_2_3_full_timecourse_edge_strength$treatment == "exp 3"] = "iEGFR"
+	feature_table_2_3_full_timecourse_edge_strength$treatment[feature_table_2_3_full_timecourse_edge_strength$treatment == "exp 4"] = "iMEK"
+	feature_table_2_3_full_timecourse_edge_strength$treatment[feature_table_2_3_full_timecourse_edge_strength$treatment == "exp 5"] = "imTOR"
+	feature_table_2_3_full_timecourse_edge_strength$treatment[feature_table_2_3_full_timecourse_edge_strength$treatment == "exp 6"] = "iPI3K"
+	feature_table_2_3_full_timecourse_edge_strength$treatment[feature_table_2_3_full_timecourse_edge_strength$treatment == "exp 7"] = "iPKC"
+	head(feature_table_2_3_full_timecourse_edge_strength)
+
+	saveRDS(feature_table_2_3_full_timecourse_edge_strength,file=paste0(feature_folder,"/feature_table_2_3_full_timecourse_edge_strength.RDS"))
+
+	GDSC_cell_lines = colnames(read.csv("data/DATA_GDSC/GDSC_IC50_breast.csv"))
+	feature_table_2_3_full_timecourse_edge_strength_GDSC_cellines = filter(feature_table_2_3_full_timecourse_edge_strength,cell_line %in% GDSC_cell_lines)
+	feature_table_2_3_full_timecourse_edge_strength_GDSC_cellines = filter(feature_table_2_3_full_timecourse_edge_strength,cell_line %in% GDSC_cell_lines, time %in% c(0,5.5,7,9,13,17,23,30,40,60))
+	saveRDS(feature_table_2_3_full_timecourse_edge_strength_GDSC_cellines,file=paste0(feature_folder,"/feature_table_2_3_full_timecourse_edge_strength_GDSC_cellines.RDS"))
+}else{
+	feature_table_2_3_full_timecourse_edge_strength = readRDS(file=paste0(feature_folder,"/feature_table_2_3_full_timecourse_edge_strength.RDS"))
+
+}
+unique_conds = unique(feature_table_2_3_full_timecourse_edge_strength[,c("treatment","time","cell_line")])
+unique_conds = unique(feature_table_2_3_full_timecourse_edge_strength_GDSC_cellines[,c("treatment","time","cell_line")])
+
+condition_time_dist = dcast(unique_conds,treatment~time,value.var = "cell_line")
 
 
-feature_cols = grep("=", colnames(feature_table_2_2_timecourse_edge_strength))
-
-feature_table_2_3_full_timecourse_edge_strength = ddply(feature_table_2_2_timecourse_edge_strength,.(cell_line,exp),function(df){
-	# df = filter(feature_table_2_3_full_timecourse_edge_strength,cell_line=="184A1",exp=="exp 3")
- 	# approx(x=df$time,y = df$`PIP3=AKT_S473`,xout = unique_time)
-	interp_matrix = apply(df[,feature_cols],2,function(col_dat){approx(x = df$time,y=col_dat,xout = unique_time,method = "linear",rule = 2)[['y']]})
-	cbind(time=unique_time,interp_matrix)
-})
-
-# exp 1 — not included
-# exp 2 —  EGF+SERUM
-# exp 3 — iEGFR
-# exp 4 — iMEK
-# exp 5 — imTOR
-# exp 6 — iPI3K
-# exp 7 — iPKC
-colnames(feature_table_2_3_full_timecourse_edge_strength)[[2]] = "treatment"
-feature_table_2_3_full_timecourse_edge_strength$treatment = as.character(feature_table_2_3_full_timecourse_edge_strength$treatment)
-feature_table_2_3_full_timecourse_edge_strength$treatment[feature_table_2_3_full_timecourse_edge_strength$treatment == "exp 2"] = "EGF"
-feature_table_2_3_full_timecourse_edge_strength$treatment[feature_table_2_3_full_timecourse_edge_strength$treatment == "exp 3"] = "iEGFR"
-feature_table_2_3_full_timecourse_edge_strength$treatment[feature_table_2_3_full_timecourse_edge_strength$treatment == "exp 4"] = "iMEK"
-feature_table_2_3_full_timecourse_edge_strength$treatment[feature_table_2_3_full_timecourse_edge_strength$treatment == "exp 5"] = "imTOR"
-feature_table_2_3_full_timecourse_edge_strength$treatment[feature_table_2_3_full_timecourse_edge_strength$treatment == "exp 6"] = "iPI3K"
-feature_table_2_3_full_timecourse_edge_strength$treatment[feature_table_2_3_full_timecourse_edge_strength$treatment == "exp 7"] = "iPKC"
-head(feature_table_2_3_full_timecourse_edge_strength)
-
-saveRDS(feature_table_2_3_full_timecourse_edge_strength,file=paste0(feature_folder,"/feature_table_2_3_full_timecourse_edge_strength.RDS"))
 
 
 ggplot(filter(feature_table_2_3_full_timecourse_edge_strength,cell_line=="184A1")) + geom_line(aes(time,`ERK12=p90RSK` ,col=treatment))

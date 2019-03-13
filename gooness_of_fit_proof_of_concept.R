@@ -48,6 +48,8 @@ r2_par_test_stats = adply(r2_par_test,.margins = 1,function(x){
 	M = calibrated_models[[x$cell_line]]
 	#M$plotFit()
 	M$ode_parameters$parValues[M$ode_parameters$index_opt_pars] = as.numeric(x[1,M$ode_parameters$parNames[M$ode_parameters$index_opt_pars]])
+	M$ode_parameters$x0Values[M$ode_parameters$index_opt_x0] = as.numeric(x[1,gsub("^1","x0",M$ode_parameters$x0Names[M$ode_parameters$index_opt_x0])])
+	M$updateInitialValueEstimates(ode_parameters = M$ode_parameters,initialConditions = M$initialConditions)
 
 
 	stats = M$getStatistics()
@@ -82,6 +84,9 @@ x = r2_par_test[1,]
 M = calibrated_models[[x$cell_line]]
 #M$plotFit()
 M$ode_parameters$parValues[M$ode_parameters$index_opt_pars] = as.numeric(x[1,M$ode_parameters$parNames[M$ode_parameters$index_opt_pars]])
+M$ode_parameters$x0Values[M$ode_parameters$index_opt_x0] = as.numeric(x[1,gsub("^1","x0",M$ode_parameters$x0Names[M$ode_parameters$index_opt_x0])])
+M$updateInitialValueEstimates(ode_parameters = M$ode_parameters,initialConditions = M$initialConditions)
+
 data_vec = unlist(M$exps$signals)
 Sim = M$simulate()$signals
 sim_vec = unlist(Sim)

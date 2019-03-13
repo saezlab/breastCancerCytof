@@ -127,6 +127,8 @@ celline_data_melted_ext = ddply(celline_data_melted, .(markers), function(df){
 	return(df)
 })
 
+if(FALSE) saveRDS(celline_data_melted_ext,"./data/all_cellline_scaled_AB_timecourse_data_RDS")
+
 if(regenerateFigures){
 	gg_data = celline_data_melted_ext
 	gg_data$grouping = paste(gg_data$cell_line,gg_data$time_course, gg_data$treatment,sep = "_")

@@ -413,7 +413,7 @@ pheatmap(t(diff_tHSD),
 
 
 
-## 4. check distribution of parametrs ---
+## 4. check distribution of parametrs ----
 
 #parameter_df_wide = reshape2::dcast(sampling_df,sampling_id+cell_line+run_id~parameter+fobj+rel_fobj,value.var = "parameter_value")
 parameter_df_long = reshape2::melt(sampling_df,id.var = c("sampling_id","cell_line","run_id","fobj","rel_fobj"),value.name = "parameter_value",variable.name = "parameter")
