@@ -1,6 +1,7 @@
 # Goodness of fit again: compare model error to biological reproducibility
-
-
+library(plyr)
+library(dplyr)
+library(ggplot2)
 # we compare the RMSE of the proteins versus the biological differences between A/B time courses.
 
 
@@ -88,23 +89,24 @@ sampling_df_qc = sampling_df[sampling_df$rel_fobj<1.1,]
 # we report the statistics only on the best model from each cell-line
 best_parameters = ddply(sampling_df_qc,.(cell_line),function(df) df[which.min(df$fobj),])
 
-get_annot_df_from_cnolist = function(signal_list,data_list){
-	exps = rep(paste("exp",nrow(signal_list[[1]]),sep=""), ncol(signal_list[[1]])*length(signal_list))
-	times = rep(paste("time",1:length(signal_list),sep=""), each=ncol(signal_list[[1]])*nrow(signal_list[[1]]))
-	prots = rep(rep(colnames(signal_list[[1]]), each=nrow(signal_list[[1]])),length(signal_list))
-	ggdata = data.frame(sim=unlist(signal_list),dat=unlist(data_list),exps,times,prots)
+get_annot_df_from_cnolist = function(signal_list,data_list,timepoints,experiments){
+
+	treatment = rep(experiments, ncol(signal_list[[1]])*length(signal_list))
+	time = rep(timepoints, each=ncol(signal_list[[1]])*nrow(signal_list[[1]]))
+	markers = rep(rep(colnames(signal_list[[1]]), each=nrow(signal_list[[1]])),length(signal_list))
+	ggdata = data.frame(sim=unlist(signal_list),dat=unlist(data_list),treatment,time,markers)
 }
 
 sim_vs_data_all = adply(best_parameters,.expand = F,.margins = 1,function(x){
-	#x = r2_par_test[1,]
+	#x = best_parameters[1,]
 
 	M = calibrated_models[[x$cell_line]]
 	#M$plotFit()
 	M$ode_parameters$parValues[M$ode_parameters$index_opt_pars] = as.numeric(x[1,M$ode_parameters$parNames[M$ode_parameters$index_opt_pars]])
 	M$ode_parameters$x0Values[M$ode_parameters$index_opt_x0] = as.numeric(x[1,gsub("^1","x0",M$ode_parameters$x0Names[M$ode_parameters$index_opt_x0])])
 	M$updateInitialValueEstimates(ode_parameters = M$ode_parameters,initialConditions = M$initialConditions)
-
-	ggdata = get_annot_df_from_cnolist(signal_list =  M$simulate()$signals, data_list = M$exps$signals)
+	experiments = c("control",   "EGF", "iEGFR",  "iMEK12", "imTOR",  "iPI3K",  "iPKC")
+	ggdata = get_annot_df_from_cnolist(signal_list =  M$simulate()$signals, data_list = M$exps$signals, timepoints=M$exps$timepoints, experiments = experiments)
 	ggdata$cell_line = x$cell_line
 	return(ggdata)
 },.progress = progress_text())
@@ -113,7 +115,7 @@ sim_vs_data_all = adply(best_parameters,.expand = F,.margins = 1,function(x){
 
 # sim vs mean data
 
-model_rmse_r2_by_prots = ddply(sim_vs_data_all,.(cell_line,prots),summarize,
+model_rmse_r2_by_prots = ddply(sim_vs_data_all,.(cell_line,markers),summarize,
 						 rmse = sqrt(sum((sim-dat)^2)/length(sim)),
 						 r2 = cor(sim,dat)^2,
 						 r = cor(sim,dat),
@@ -150,15 +152,112 @@ combined_stats$cell_line = factor(combined_stats$cell_line,levels = tmp$cell_lin
 ggplot(combined_stats,aes(x=cell_line,y=rmse,col=type,fill=type)) +
 	geom_boxplot()  + coord_flip() + theme_bw() +
 	ggtitle("Compare model and experimental reproducibility",subtitle = "model fitting error versus biological reproduction error") +
-	xlab("Cell lines") + ylab("Root mean square error (RMSE)")
+	xlab("Cell lines") + ylab("Root mean square error (RMSE)") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 
-if(FALSE) ggsave("./supp_info/results_for_march_2019/figures/RMSE_modeling_vs_biological_mean_exp.pdf",width = 8,height = 7.5)
+if(FALSE) ggsave("./supp_info/results_for_march_2019/figures/RMSE_modeling_vs_biological_mean_exp_nogrid.pdf",width = 8,height = 7.5)
 
 
 ggplot(combined_stats,aes(x=rmse,col=type,fill=type)) +
 	geom_density(alpha=0.5)  +
 	 xlab("Root mean square error (RMSE)") + theme_bw()
 if(FALSE) ggsave("./supp_info/results_for_march_2019/figures/RMSE_modeling_vs_biological_density.pdf",width = 8,height = 3)
+
+
+##### 3.1.2 Pick some example and plot ####
+library(tidyr)
+
+# merge the model time courses and the data
+celline_data_melted_ext_interp$markers = as.character(celline_data_melted_ext_interp$markers)
+celline_data_melted_ext_interp$markers = gsub("p-","",celline_data_melted_ext_interp$markers)
+
+m_timecourse_data = merge(celline_data_melted_ext_interp,
+						  filter(sim_vs_data_all,treatment!="control"),all = T)
+
+get_min = function(x,y){
+
+
+	df=data.frame(x,y)
+	apply(df, 1, FUN=min)
+}
+
+get_max = function(x,y){
+	df=data.frame(x,y)
+	apply(df, 1, FUN=max)
+}
+
+# selects cell-line, and plots the model sim vs data
+gen_RMSE_fig <- function(RMSE_cell_line,m_timecourse_data,rmse_stats){
+
+	cl_timecourse_data = filter(m_timecourse_data,cell_line==RMSE_cell_line, markers==rmse_stats$markers)
+
+	cl_timecourse_data %>% as_tibble() %>%
+		filter(complete.cases(.))%>%
+		ggplot() +
+		#geom_ribbon(aes(time,ymin=get_min(signal_A,signal_B),ymax=get_max(signal_A,signal_B),fill=treatment), alpha=0.2) +
+		geom_line(aes(time,sim,col=treatment))+
+		geom_point(aes(time,dat,col=treatment,shape="mean_signal")) +
+		geom_point(aes(time,signal_A,col=treatment,shape="signal_A")) +
+		geom_point(aes(time,signal_B,col=treatment,shape="signal_B")) +
+		geom_pointrange(aes(time,dat,ymin=get_min(signal_A,signal_B),ymax=get_max(signal_A,signal_B),col=treatment)) +
+		# # geom_point(aes(time,AB_mean_signal,col=treatment),shape=2) +
+		scale_shape_manual(values=c("signal_A" = 2,"signal_B" = 4,"mean_signal"=1))+
+		theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+		ggtitle(paste0(rmse_stats$cell_line,", marker ", rmse_stats$markers,", model RMSE: ",round(rmse_stats$rmse[[1]],digits = 3),", data RMSE: ",round(rmse_stats$rmse[[2]],digits = 3) ))+
+		ylab("Signal") + xlab("Time [mins]") +coord_cartesian(ylim=c(0,1))
+}
+
+# select cell_line sample 1
+RMSE_cell_line = "ZR751"
+combined_stats = as_tibble(combined_stats)
+model_stat = combined_stats %>% filter(cell_line==RMSE_cell_line,type=="model_vs_data") %>%  top_n(1,rmse)
+data_stat = combined_stats %>% filter(cell_line==RMSE_cell_line,type=="A/B_vs_mean",markers==model_stat$markers)
+gg = gen_RMSE_fig(RMSE_cell_line,m_timecourse_data,rbind(model_stat,data_stat))
+plot(gg)
+if(FALSE) ggsave(plot = gg,filename = "./figures/for_paper/fitted_trajectory_sample_1_errorbar_v2.pdf",width = 6,height = 5)
+#if(FALSE) ggsave(plot = gg,filename = "./figures/for_paper/fitted_trajectory_sample_1_with_ribbon.pdf",width = 6,height = 5)
+#if(FALSE) ggsave(plot = gg,filename = "./figures/for_paper/fitted_trajectory_sample_1_with_errorbar.pdf",width = 6,height = 5)
+
+
+# select cell_line sample 2
+RMSE_cell_line = "AU565"
+combined_stats = as_tibble(combined_stats)
+model_stat = combined_stats %>% filter(cell_line==RMSE_cell_line,type=="model_vs_data") %>%  top_n(1,rmse)
+data_stat = combined_stats %>% filter(cell_line==RMSE_cell_line,type=="A/B_vs_mean",markers==model_stat$markers)
+gg = gen_RMSE_fig(RMSE_cell_line,m_timecourse_data,rbind(model_stat,data_stat))
+plot(gg)
+if(FALSE) ggsave(plot = gg,filename = "./figures/for_paper/fitted_trajectory_sample_2_errorbar_v2.pdf",width = 6,height = 5)
+#if(FALSE) ggsave(plot = gg,filename = "./figures/for_paper/fitted_trajectory_sample_2.pdf",width = 6,height = 5)
+
+
+# select cell_line sample 3 -- good example
+RMSE_cell_line = "184A1"
+model_stat = combined_stats %>% filter(cell_line==RMSE_cell_line,type=="model_vs_data",markers=="H3")
+data_stat = combined_stats %>% filter(cell_line==RMSE_cell_line,type=="A/B_vs_mean",markers==model_stat$markers)
+gg = gen_RMSE_fig(RMSE_cell_line,m_timecourse_data,rbind(model_stat,data_stat))
+plot(gg)
+if(FALSE) ggsave(plot = gg,filename = "./figures/for_paper/fitted_trajectory_sample_3_errorbar_v2.pdf",width = 6,height = 5)
+#if(FALSE) ggsave(plot = gg,filename = "./figures/for_paper/fitted_trajectory_sample_3.pdf",width = 6,height = 5)
+
+# select cell_line sample 4 -- good example
+RMSE_cell_line = "BT549"
+model_stat = combined_stats %>% filter(cell_line==RMSE_cell_line,type=="model_vs_data",markers=="MAPKAPK2")
+data_stat = combined_stats %>% filter(cell_line==RMSE_cell_line,type=="A/B_vs_mean",markers==model_stat$markers)
+gg = gen_RMSE_fig(RMSE_cell_line,m_timecourse_data,rbind(model_stat,data_stat))
+plot(gg)
+if(FALSE) ggsave(plot = gg,filename = "./figures/for_paper/fitted_trajectory_sample_4_errorbar_v2.pdf",width = 6,height = 5)
+#if(FALSE) ggsave(plot = gg,filename = "./figures/for_paper/fitted_trajectory_sample_4.pdf",width = 6,height = 5)
+
+
+
+# select cell_line sample 4 -- good example
+RMSE_cell_line = "HCC1187"
+model_stat = combined_stats %>% filter(cell_line==RMSE_cell_line,type=="model_vs_data",markers=="p38")
+data_stat = combined_stats %>% filter(cell_line==RMSE_cell_line,type=="A/B_vs_mean",markers==model_stat$markers)
+gg = gen_RMSE_fig(RMSE_cell_line,m_timecourse_data,rbind(model_stat,data_stat))
+plot(gg)
+if(FALSE) ggsave(plot = gg,filename = "./figures/for_paper/fitted_trajectory_sample_5_errorbar_v2.pdf",width = 6,height = 5)
+
+
 
 
 ### 3.2 Based on R2 ####
