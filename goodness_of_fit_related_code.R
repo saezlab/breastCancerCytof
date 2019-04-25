@@ -1,4 +1,4 @@
-# goodness of fit for cell lines.
+# goodness of fit for cell line models
 
 
 
@@ -9,7 +9,7 @@ library(reshape2)
 library(pheatmap)
 library(RColorBrewer)
 library(ggplot2)
-
+library(ggrepel)
 calibrated_model_files = list.files("./data/models/pkn_v4_midas_v4/outputs/","*.RDS",full.names = T)
 calibrated_models = lapply(calibrated_model_files,function(f){
 	m = readRDS(f)
@@ -32,7 +32,6 @@ best_parameters = ddply(sampling_df_qc,.(cell_line),function(df) df[which.min(df
 
 r2_par_test = best_parameters
 
-# randomised parameters with 10% uniform perturbation
 index_par = 2:140
 
 
