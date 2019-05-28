@@ -1,0 +1,403 @@
+---
+title: "Show cellline variance on graph"
+author: "Attila Gabor"
+date: "3/8/2019"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+```
+
+## Data import
+```{r}
+rm(list = ls())
+
+par_global_estimability = readRDS("./data/models/pkn_v4_midas_v4/parameter_variance/par_global_estimability.RDS")
+par_stats = readRDS("./data/models/pkn_v4_midas_v4/par_stats.RDS")
+par_global_variation = readRDS("./data/models/pkn_v4_midas_v4/parameter_variance/par_global_variation.RDS")
+#sampling_df_qc = readRDS("./data/models/pkn_v4_midas_v4/parameter_samplings_QC.RDS")
+
+par_stats
+par_global_estimability
+par_global_variation
+# sampling_df_qc
+```
+
+# 
+filtering out parameters with inaccurate estimation (high CL_cov))
+```{r}
+# using fixed threshold
+par_stats = par_stats %>% mutate(accurate = CL_cov < 0.1)
+par_stats
+```
+
+
+## Graph
+
+### Individual cell lines
+CC1806, T47D, MDAMB361 and MDAMB415
+export the graph of these cell-lines to csv file to be imported in Cytoscape
+
+```{r}
+cell_lines = c("HCC1806", "T47D", "MDAMB361","MDAMB415")
+for(icl in seq_along(cell_lines)){
+	# icl = 1
+	edge_to_export = par_stats %>% 
+		filter(cell_line == cell_lines[[icl]]) %>%
+		filter(grepl("_k_",parameter)) %>%
+		separate(parameter,c("from","to"),"_k_", remove = FALSE)
+	write.csv(edge_to_export,paste0("./supp_info/results_for_april_2019/data/par_stats_",cell_lines[[icl]],".csv"),quote = F)
+}
+```
+
+Some statistics about the values that we want to show on the graph
+This is used to setup the range of the mappings in cytoscape style
+```{r}
+par_stats %>% 
+	filter(cell_line %in% cell_lines) %>%
+	filter(grepl("_k_",parameter)) %>%
+	summarise(median_range_L = range(CL_median)[[1]],
+			  median_range_U = range(CL_median)[[2]],
+			  cov_range_L=range(CL_cov)[[1]],
+			  cov_range_U=range(CL_cov)[[2]])
+
+```
+
+
+The problem with above is the hierarchic layout is changing for each imported file...
+One workaround is to export just 1 graph and export the cell-line specific features
+by columns. Then we manually change the style in cytoscape for each cell-line. 
+
+```{r}
+	# icl = 1
+edge_to_export = par_stats %>% 
+		filter(cell_line %in% cell_lines) %>%
+		filter(grepl("_k_",parameter)) %>%
+		separate(parameter,c("from","to"),"_k_", remove = FALSE)
+
+CL_mean = edge_to_export %>% group_by(cell_line,parameter,from,to) %>% summarise(CL_mean=CL_mean) %>% spread(key = cell_line,CL_mean)
+name_map = cell_lines
+names(name_map) = paste("CL_mean",cell_lines,sep="_")
+CL_mean <- CL_mean %>% rename(!!name_map)
+
+CL_cov = edge_to_export %>% group_by(cell_line,parameter,from,to) %>% summarise(CL_cov=CL_cov) %>% spread(key = cell_line,CL_cov)
+name_map = cell_lines
+names(name_map) = paste("CL_cov",cell_lines,sep="_")
+CL_cov <- CL_cov %>% rename(!!name_map)
+
+multi_edge_export = left_join(CL_mean,CL_cov)
+
+write.csv(multi_edge_export,paste0("./supp_info/results_for_april_2019/data/par_stats_4_celllines.csv"),quote = F)
+
+```
+
+### Plotting 2 networks at the same time ----
+"MDAMB361","MDAMB415"
+```{r}
+cell_lines_pairs = list(c("HCC1806", "T47D"),
+						c("HCC1806", "MDAMB415"),
+						c("HCC1806", "MDAMB361"),
+						c("MDAMB361", "T47D"))
+par_stats$parameter = as.character(par_stats$parameter)
+
+for(cl_pairs in cell_lines_pairs){
+	edge_to_export = par_stats %>% 
+		filter(cell_line %in% cl_pairs) %>%
+		filter(grepl("_k_",parameter)) %>% arrange(parameter)%>%
+		separate(parameter,c("from","to"),"_k_", remove = FALSE)
+	
+}	
+	write.csv(edge_to_export,paste0("./supp_info/results_for_april_2019/data/par_stats_",paste0(paste(cell_lines,collapse = "_vs_"),".csv")),quote = F)
+
+
+```
+
+
+
+# R2Cytoscape
+Can we do the above by calling cytoscape from R?
+
+
+```{r}
+cell_lines = c("HCC1806", "T47D", "MDAMB361","MDAMB415")
+for(icl in seq_along(cell_lines)){
+	# icl = 1
+	edge_to_export = par_stats %>% 
+		filter(cell_line == cell_lines[[icl]]) %>%
+		filter(grepl("_k_",parameter)) %>%
+		separate(parameter,c("from","to"),"_k_", remove = FALSE)
+	write.csv(edge_to_export,paste0("./supp_info/results_for_april_2019/data/par_stats_",cell_lines[[icl]],".csv"),quote = F)
+}
+```
+```{r}
+library("RCy3")
+cytoscapePing()
+
+```
+
+```{r}
+library(igraph)
+
+
+```
+
+
+```{r}
+
+# "HCC1806"  
+G = edge_to_export %>% filter(cell_line == cell_lines[[1]]) %>%
+	select(-cell_line,-parameter) %>%
+	graph_from_data_frame()
+
+createNetworkFromIgraph(G,title = cell_lines[[1]])
+setVisualStyle("CC_v1")
+layoutNetwork(layout.name = "apply preferred")
+#layoutNetwork(layout.name = "hierarchical")
+
+setEdgeColorMapping("CL_cov",c(0,5), c('#FFFFFF','#FF7755'),style.name = "CC_v1")
+
+# "T47D"     
+G = edge_to_export %>% filter(cell_line == cell_lines[[2]]) %>%
+	select(-cell_line,-parameter) %>%
+	graph_from_data_frame()
+
+createNetworkFromIgraph(G,title = cell_lines[[2]])
+setVisualStyle("CC_V1_cell_line")
+#layoutNetwork(layout.name = "apply preferred")
+layoutNetwork(layout.name = "hierarchical")
+
+# "MDAMB361" 
+G = edge_to_export %>% filter(cell_line == cell_lines[[3]]) %>%
+	select(-cell_line,-parameter) %>%
+	graph_from_data_frame()
+
+createNetworkFromIgraph(G,title = cell_lines[[3]])
+setVisualStyle("CC_V1_cell_line")
+#layoutNetwork(layout.name = "apply preferred")
+layoutNetwork(layout.name = "hierarchical")
+
+# "MDAMB415"
+G = edge_to_export %>% filter(cell_line == cell_lines[[4]]) %>%
+	select(-cell_line,-parameter) %>%
+	graph_from_data_frame()
+
+createNetworkFromIgraph(G,title = cell_lines[[4]])
+setVisualStyle("CC_V1_cell_line")
+# layoutNetwork(layout.name = "apply preferred")
+layoutNetwork(layout.name = "hierarchical")
+
+```
+
+###  Show each network on the same graph ----
+
+
+
+```{r}
+
+# 1. arrange the cell_line data into column --> not tidy
+# 1.1 nodes
+nodes <-  par_stats %>% 
+		filter(grepl("tau_",parameter)) %>%  # remove x0: keep only tau and k parameters
+		mutate(name = gsub("tau_","",parameter))
+
+# CL_median table for nodes:
+new_names = unique(nodes$cell_line)
+names(new_names) = paste0("CL_median_",new_names)
+nodes_CL_median <- nodes %>%
+	select(cell_line,CL_median,name) %>%
+	spread(cell_line,CL_median) %>%
+	rename(!!new_names)
+
+# 1.2 edges
+edges <- par_stats %>% 
+	filter(grepl("_k_",parameter)) %>%
+	separate(parameter,into = c("from","to"),"_k_", remove = FALSE)
+
+# CL_median for edges: 
+new_names = unique(edges$cell_line)
+names(new_names) = paste0("CL_median_",new_names)
+edges_CL_median <- edges %>%
+	select(cell_line,parameter,from,to,CL_median) %>%
+	spread(cell_line,CL_median) %>%
+	rename(!!new_names)
+
+
+
+# 2. add information on measurements and inputs
+cno = CNOlist("./data/MIDAS_v4/184A1.csv")
+dataNodes = colnames(cno@signals[[1]])
+
+nodes_CL_median <- nodes_CL_median %>%
+	mutate(node_type = ifelse(nodes_CL_median$name %in% dataNodes,"measured","non-measured"))
+
+nodes_CL_median <- nodes_CL_median %>% full_join(y = data.frame(name=c("EGF","SERUM"),node_type=c("input","input"),stringsAsFactors=F),by = c("name","node_type"))
+
+
+# 1. create an igraph object
+G  <-  tbl_graph(nodes = data.frame(nodes_CL_median),edges = data.frame(edges_CL_median), directed = TRUE)
+
+
+createNetworkFromIgraph(G,title = cell_lines[[1]])
+setVisualStyle("CC_v1")
+layoutNetwork(layout.name = "apply preferred")
+#layoutNetwork(layout.name = "hierarchical")
+
+cols = RColorBrewer::brewer.pal(3,"Reds")
+#edge_cols = RColorBrewer::brewer.pal(3,"Set1")
+cell_lines = unique(par_stats$cell_line)
+
+for(i_celline in 1:length(cell_lines)){
+	cl_name = cell_lines[[i_celline]]
+	print(cl_name)
+	
+	var_name = paste0("CL_median_",cl_name)
+	setEdgeColorMapping(var_name,c(0,1,5),cols,style.name = "CC_v1"); Sys.sleep(0.1)
+	setNodeColorMapping(var_name,c(0,1,5),cols,style.name = "CC_v1"); Sys.sleep(0.1)
+	setEdgeLineWidthMapping(var_name,c(0,5),widths = c(2,20),style.name = "CC_v1"); Sys.sleep(0.1)
+	#setNodeBorderColorMapping("node_type",table.column.values = c("non-measured","measured","input"),colors = edge_cols,style.name = "CC_v1",mapping.type = "d"); Sys.sleep(0.1)
+	
+	layoutNetwork(layout.name = "apply preferred"); Sys.sleep(0.3)
+	
+	exportImage(filename = file.path(getwd(),"supp_info/results_for_april_2019/figures",paste0(var_name,".pdf")),type = "PDF")
+	
+}
+
+# mvp <- mapVisualProperty(visual.prop = "Node Border Line Type",
+# 						 table.column = "node_type",
+# 						 mapping.type = "d",
+# 						 table.column.values = c("non-measured","measured","input"),
+# 						 visual.prop.values = c("Dots","Solid","Solid"))
+# 
+# mvp <- mapVisualProperty(visual.prop = "NODE_BORDER_LINE_TYPE",
+# 						 table.column = "node_type",
+# 						 mapping.type = "d",
+# 						 table.column.values = c("non-measured","measured","input"),
+# 						 visual.prop.values = c("Dots","Solid","Solid"))
+# 
+# # 
+# updateStyleMapping("CC_v1", mvp)
+
+
+```
+
+
+
+
+```{r}
+
+g = out$graph
+
+edges = names(out$edgeAttrs$color)
+nodePairs = strsplit(edges,split = "~") 
+edgeStart = unlist(lapply(nodePairs,function(x)x[[1]]))
+edgeEnd = unlist(lapply(nodePairs,function(x)x[[2]]))
+
+g = initEdgeAttribute(graph = g,
+					  attribute.name = "weight",
+					  attribute.type = "numeric",
+					  default.value = 1)
+
+g = initEdgeAttribute(graph = g,
+					  attribute.name = "edgeColor",
+					  attribute.type = "char",
+					  default.value = "white")
+
+edgeData(g,from =edgeStart,to = edgeEnd ,attr = "edgeColor") <- out$edgeAttrs$color
+
+
+
+g = initNodeAttribute(graph = g,
+					  attribute.name = "label",
+					  attribute.type = "char",
+					  default.value = "undefined")
+
+nodeData(g,names(nodeData(g)),"label") <- names(nodeData(g))
+
+
+g = initNodeAttribute(graph = g,
+					  attribute.name = "nodeFillColor",
+					  attribute.type = "char",
+					  default.value = "white")
+
+nodeData(g,names(out$nodeAttrs$fillcolor),attr = "nodeFillColor") <- out$nodeAttrs$fillcolor
+
+g = initNodeAttribute(graph = g,
+					  attribute.name = "nodeColor",
+					  attribute.type = "char",
+					  default.value = "white")
+
+nodeData(g,names(out$nodeAttrs$color),attr = "nodeColor") <- out$nodeAttrs$color
+
+
+
+
+cw <- CytoscapeWindow ('vignette', graph=g, overwrite=TRUE)
+displayGraph (cw)
+
+```
+
+
+
+
+
+#### add edge strength
+WE cannot add it because this is based on combined edges and by parameters!!!
+```{r}
+edge_str = readRDS("./data/models/pkn_v4_midas_v4/features/feature_table_2_3_full_timecourse_edge_strength.RDS")
+edge_str %>% as_tibble() %>% 
+	gather(edges, value, contains("=")) %>%  # long format
+	group_by(cell_line,edges) %>% summarise(mean_str = mean(value),  # summarise over time and treatment
+											median_str = median(value)) %>%
+	filter(cell_line %in% cell_lines)
+```
+
+
+
+
+
+
+
+
+## Global graph
+```{r}
+# compute statistics over all cell lines
+
+global_stats <- par_stats %>% group_by(parameter) %>% filter(accurate,.preserve = T) %>%
+	summarise(CoV_par = sd(CL_mean)/mean(CL_mean), n_celline = sum(accurate))
+global_stats
+
+global_stats$CoV_par[is.na(global_stats$CoV_par)] = 0
+global_stats
+```
+
+
+
+```{r}
+edges_stats <- global_stats %>%
+	filter(grepl("_k_",parameter)) %>%
+	separate(parameter,c("from","to"),"_k_", remove = FALSE)
+edges_stats
+```
+
+```{r}
+write.csv(edges_stats,"./supp_info/results_for_march_2019/data/par_stats_v1.csv",quote = F)
+```
+
+write node annotation table: non-measured nodes initial condition are estimated
+```{r}
+non_measured_nodes = c("EGF","SERUM",gsub("x0.","",grep("x0",global_stats$parameter,value = T),fixed = T))
+all_nodes = unique(c(edges_stats$from,edges_stats$to))
+node_table = data_frame(node=all_nodes)
+node_table <- node_table %>% mutate(node_type = ifelse(node%in%non_measured_nodes,"non-measured","measured"))
+node_table
+```
+
+
+```{r}
+write.csv(node_table,"./supp_info/results_for_march_2019/data/par_stats_v1_nodes.csv",quote = F)
+```
+
+this is continued in Cytoscape. 
+
+

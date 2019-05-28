@@ -6,15 +6,16 @@
 
 
 library(multiCellNOpt)
-library(plyr)
-library(dplyr)
-library(reshape2)
+
+# library(plyr)
+library(tidyverse)
+# library(reshape2)
 library(pheatmap)
 library(RColorBrewer)
 library(ggplot2)
 
 
-sampling_df = readRDS("./data/models/pkn_v4_midas_v4/mfuSampling/00.estim_params_collected_v2.RDS")
+sampling_df = readRDS("./data/models/pkn_v4_midas_v4/mfuSampling/00.estim_params_collected_v2.RDS")%>% as_tibble()
 
 ### Quality control
 sampling_df_qc = sampling_df[sampling_df$rel_fobj<1.1,]
@@ -22,7 +23,10 @@ sampling_df_qc = sampling_df[sampling_df$rel_fobj<1.1,]
 # save data for marco:
 if(FALSE) saveRDS(sampling_df_qc,"./data/models/pkn_v4_midas_v4/parameter_samplings_QC.RDS")
 
-sampling_df_qc_m = melt(sampling_df_qc,measure.vars = c(2:140),variable.name = "parameter" )
+
+sampling_df_qc_m = sampling_df_qc %>% gather ("parameter", "value", -sampling_id,-cell_line,-run_id,-fobj,-rel_fobj)
+
+
 
 
 # par_stats: data.frame containing some statistics for each parameter estimated in each cell-line:
@@ -31,12 +35,17 @@ sampling_df_qc_m = melt(sampling_df_qc,measure.vars = c(2:140),variable.name = "
 #	- CL_median: median estimated value of the parameter for each cell-line
 #	- CL_sd: standard deviation of the parameter value for each cell-line
 #   - CL_cov: sd/mean aka coefficient of variation of the parameter in each cell line
-par_stats = ddply(sampling_df_qc_m,.(cell_line,parameter),function(df){
-	data.frame(CL_mean=mean(df$value),
-			   CL_median=median(df$value),
-			   CL_sd=sd(df$value))
-})
-par_stats$CL_cov =par_stats$CL_sd/par_stats$CL_mean
+#   - CL_best: best performing set of parameter vector
+#   - CL_cov_best: sd/best coeff. of variation based on best
+par_stats = sampling_df_qc_m %>% group_by(cell_line,parameter) %>%
+	summarise( CL_mean=mean(value),
+			   CL_median=median(value),
+			   CL_sd=sd(value),
+			   CL_best = value[fobj == min(fobj)]) %>%
+	mutate(CL_cov = CL_sd/CL_mean,
+		   CL_cov_best = CL_sd/CL_best)
+
+
 
 # save parameter stats for Marco:
 if(FALSE) saveRDS(par_stats,"./data/models/pkn_v4_midas_v4/par_stats.RDS")
