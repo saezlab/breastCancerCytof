@@ -3,7 +3,9 @@
 # rank parameters by inter-cell-line variance of the median
 # biaxial plot shows parameters to use.
 
-
+# updates:
+# - 28. May: adding the bnest of the initial 10 runs to the sampling AFTER quality control
+#	computing stats with respect to the best optimised parameter vectopr (coeff of var.)
 
 library(multiCellNOpt)
 
@@ -14,17 +16,43 @@ library(pheatmap)
 library(RColorBrewer)
 library(ggplot2)
 
-
+# import the parameters from the mfu_sampler
 sampling_df = readRDS("./data/models/pkn_v4_midas_v4/mfuSampling/00.estim_params_collected_v2.RDS")%>% as_tibble()
 
-### Quality control
+### Quality control the sampling
 sampling_df_qc = sampling_df[sampling_df$rel_fobj<1.1,]
 
 # save data for marco:
 if(FALSE) saveRDS(sampling_df_qc,"./data/models/pkn_v4_midas_v4/parameter_samplings_QC.RDS")
 
+# for consistency, we also add the parameter vector, that was the result of the initial training.
+# performance could be worse, ma sure not to rule out.
+get_calibrated_model_parameters = function(modelFolder ="./data/models/pkn_v4_midas_v4/outputs/" ){
 
-sampling_df_qc_m = sampling_df_qc %>% gather ("parameter", "value", -sampling_id,-cell_line,-run_id,-fobj,-rel_fobj)
+	calibrated_model_files = list.files(modelFolder,"*.RDS",full.names = T)
+	calibrated_models = lapply(calibrated_model_files,function(f){
+		m = readRDS(f)
+		# update the class definition to the newest version
+		#m2 = logicODEModel$new(oldModel = m)
+	}
+	)
+	names(calibrated_models) = gsub(".RDS","",basename(calibrated_model_files))
+	tibble(models = calibrated_models,cell_line = names(calibrated_models)) %>%
+		mutate(parameters = map(models,function(M){
+			opt_pars = M$ode_parameters$parValues[M$ode_parameters$index_opt_pars] %>% as.list() %>% as.data.frame()
+			opt_x0 =  M$ode_parameters$x0Values[M$ode_parameters$index_opt_x0]
+			names(opt_x0) <- gsub("^[0-9]+","x0", M$ode_parameters$x0Names[M$ode_parameters$index_opt_x0])
+				cbind(opt_pars,as.data.frame(as.list(opt_x0))) %>%
+				mutate(fobj = M$fitResults[[1]]$fbest, rel_fobj = NA_real_, run_id = "0" )
+		})) %>% unnest(parameters) %>% select(-models)
+}
+model_opt_pars = get_calibrated_model_parameters()
+model_opt_pars$sampling_id = "optimised"
+
+
+sampling_df_qc_m = sampling_df_qc %>%
+	bind_rows(model_opt_pars) %>%
+	gather ("parameter", "value", -sampling_id,-cell_line,-run_id,-fobj,-rel_fobj)
 
 
 
@@ -37,18 +65,24 @@ sampling_df_qc_m = sampling_df_qc %>% gather ("parameter", "value", -sampling_id
 #   - CL_cov: sd/mean aka coefficient of variation of the parameter in each cell line
 #   - CL_best: best performing set of parameter vector
 #   - CL_cov_best: sd/best coeff. of variation based on best
+#   - CL_optimised: initially optimised parameter vector
+#   - CL_cov_optimised: sd/optimised coeff. of variation based on optimised par
 par_stats = sampling_df_qc_m %>% group_by(cell_line,parameter) %>%
 	summarise( CL_mean=mean(value),
 			   CL_median=median(value),
 			   CL_sd=sd(value),
-			   CL_best = value[fobj == min(fobj)]) %>%
+			   CL_best = value[fobj == min(fobj)],
+			   CL_optim = value[sampling_id=="optimised"]
+			   ) %>%
 	mutate(CL_cov = CL_sd/CL_mean,
-		   CL_cov_best = CL_sd/CL_best)
+		   CL_cov_best = CL_sd/CL_best,
+		   CL_cov_optim = CL_sd/CL_optim)
 
 
 
 # save parameter stats for Marco:
 if(FALSE) saveRDS(par_stats,"./data/models/pkn_v4_midas_v4/par_stats.RDS")
+
 
 
 ### Parameter estimability -----------------------------------------------------
