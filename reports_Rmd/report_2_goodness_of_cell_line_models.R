@@ -2,6 +2,9 @@
 library(plyr)
 library(dplyr)
 library(ggplot2)
+library(tidyverse)
+library(purrr)
+library(multiCellNOpt)
 # we compare the RMSE of the proteins versus the biological differences between A/B time courses.
 
 
@@ -74,6 +77,9 @@ data_rmse_r2_by_prots = ddply(celline_data_melted_ext_interp,.(cell_line,markers
 
 ######## 2. EXTRACT MODEL STATISTICS ###########################################
 
+# use the best parameters or use the best parameter vector from the initial fit?
+use_bestPar = FALSE
+
 calibrated_model_files = list.files("./data/models/pkn_v4_midas_v4/outputs/","*.RDS",full.names = T)
 calibrated_models = lapply(calibrated_model_files,function(f){
 	m = readRDS(f)
@@ -87,7 +93,8 @@ sampling_df = readRDS("./data/models/pkn_v4_midas_v4/mfuSampling/00.estim_params
 sampling_df_qc = sampling_df[sampling_df$rel_fobj<1.1,]
 
 # we report the statistics only on the best model from each cell-line
-best_parameters = ddply(sampling_df_qc,.(cell_line),function(df) df[which.min(df$fobj),])
+
+
 
 get_annot_df_from_cnolist = function(signal_list,data_list,timepoints,experiments){
 
@@ -97,19 +104,53 @@ get_annot_df_from_cnolist = function(signal_list,data_list,timepoints,experiment
 	ggdata = data.frame(sim=unlist(signal_list),dat=unlist(data_list),treatment,time,markers)
 }
 
-sim_vs_data_all = adply(best_parameters,.expand = F,.margins = 1,function(x){
-	#x = best_parameters[1,]
 
-	M = calibrated_models[[x$cell_line]]
-	#M$plotFit()
-	M$ode_parameters$parValues[M$ode_parameters$index_opt_pars] = as.numeric(x[1,M$ode_parameters$parNames[M$ode_parameters$index_opt_pars]])
-	M$ode_parameters$x0Values[M$ode_parameters$index_opt_x0] = as.numeric(x[1,gsub("^1","x0",M$ode_parameters$x0Names[M$ode_parameters$index_opt_x0])])
-	M$updateInitialValueEstimates(ode_parameters = M$ode_parameters,initialConditions = M$initialConditions)
-	experiments = c("control",   "EGF", "iEGFR",  "iMEK12", "imTOR",  "iPI3K",  "iPKC")
-	ggdata = get_annot_df_from_cnolist(signal_list =  M$simulate()$signals, data_list = M$exps$signals, timepoints=M$exps$timepoints, experiments = experiments)
-	ggdata$cell_line = x$cell_line
-	return(ggdata)
-},.progress = progress_text())
+if(use_bestPar){
+	best_parameters = ddply(sampling_df_qc,.(cell_line),function(df) df[which.min(df$fobj),])
+
+
+	sim_vs_data_all = adply(best_parameters,.expand = F,.margins = 1,function(x){
+		#x = best_parameters[1,]
+
+		M = calibrated_models[[x$cell_line]]
+		#M$plotFit()
+
+		M$ode_parameters$parValues[M$ode_parameters$index_opt_pars] = as.numeric(x[1,M$ode_parameters$parNames[M$ode_parameters$index_opt_pars]])
+		M$ode_parameters$x0Values[M$ode_parameters$index_opt_x0] = as.numeric(x[1,gsub("^1","x0",M$ode_parameters$x0Names[M$ode_parameters$index_opt_x0])])
+		M$updateInitialValueEstimates(ode_parameters = M$ode_parameters,initialConditions = M$initialConditions)
+
+		experiments = c("control",   "EGF", "iEGFR",  "iMEK12", "imTOR",  "iPI3K",  "iPKC")
+		ggdata = get_annot_df_from_cnolist(signal_list =  M$simulate()$signals, data_list = M$exps$signals, timepoints=M$exps$timepoints, experiments = experiments)
+		ggdata$cell_line = x$cell_line
+		return(ggdata)
+	},.progress = progress_text())
+}else{
+	sim_vs_data_all <- tibble(models = calibrated_models,cell_line=names(calibrated_models)) %>%
+		mutate( simdata = map(models,function(M){
+
+			experiments = c("control",   "EGF", "iEGFR",  "iMEK12", "imTOR",  "iPI3K",  "iPKC")
+			ggdata = get_annot_df_from_cnolist(signal_list =  M$simulate()$signals, data_list = M$exps$signals, timepoints=M$exps$timepoints, experiments = experiments)
+		} )) %>% unnest(simdata)
+
+}
+
+
+randModel_vs_data_all <- tibble(models = calibrated_models,cell_line=names(calibrated_models)) %>%
+	mutate( simdata = map(models,function(M){
+		# initialise a model with random parameters, but with the real data and SIF
+		 Mrand = multiCellNOpt::logicODEModel$new(SIFfile = M$pkn,exps = M$exps)
+		experiments = c("control",   "EGF", "iEGFR",  "iMEK12", "imTOR",  "iPI3K",  "iPKC")
+		iter = 0
+		while(TRUE){
+			Mrand$initODE_parameters(random = T)
+			ggdata = get_annot_df_from_cnolist(signal_list =  Mrand$simulate()$signals, data_list = Mrand$exps$signals, timepoints=Mrand$exps$timepoints, experiments = experiments)
+			iter = iter + 1
+			if(!all(is.na(ggdata$sim)) | iter > 10) break()
+		}
+
+		ggdata
+	} )) %>% unnest(simdata)
+
 
 
 
@@ -121,7 +162,11 @@ model_rmse_r2_by_prots = ddply(sim_vs_data_all,.(cell_line,markers),summarize,
 						 r = cor(sim,dat),
 						 data_sd = sd(dat))
 
-
+random_model_rmse_r2_by_prots = ddply(randModel_vs_data_all,.(cell_line,markers),summarize,
+							   rmse = sqrt(sum((sim-dat)^2)/length(sim)),
+							   r2 = cor(sim,dat)^2,
+							   r = cor(sim,dat),
+							   data_sd = sd(dat))
 
 
 
@@ -129,6 +174,7 @@ model_rmse_r2_by_prots = ddply(sim_vs_data_all,.(cell_line,markers),summarize,
 
 
 model_rmse_r2_by_prots$type = "model_vs_data"
+random_model_rmse_r2_by_prots$type = "random_model_vs_data"
 data_rmse_r2_by_prots$type = "A/B_vs_mean"
 data_rmse_r2_by_prots$markers = as.character(data_rmse_r2_by_prots$markers)
 data_rmse_r2_by_prots$markers = gsub("p-","",data_rmse_r2_by_prots$markers)
@@ -137,7 +183,7 @@ colnames(model_rmse_r2_by_prots)[[2]] = "markers"
 model_rmse_r2_by_prots$markers = as.character(model_rmse_r2_by_prots$markers)
 
 
-combined_stats = rbind(data_rmse_r2_by_prots,model_rmse_r2_by_prots[,-6])
+combined_stats = rbind(data_rmse_r2_by_prots,model_rmse_r2_by_prots[,-6],random_model_rmse_r2_by_prots[,-6])
 
 
 ## 3.1 Based on RMSE ####
@@ -154,14 +200,43 @@ ggplot(combined_stats,aes(x=cell_line,y=rmse,col=type,fill=type)) +
 	ggtitle("Compare model and experimental reproducibility",subtitle = "model fitting error versus biological reproduction error") +
 	xlab("Cell lines") + ylab("Root mean square error (RMSE)") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 
-if(FALSE) ggsave("./supp_info/results_for_march_2019/figures/RMSE_modeling_vs_biological_mean_exp_nogrid.pdf",width = 8,height = 7.5)
+if(FALSE) ggsave("./supp_info/results_for_may_2019/figures/RMSE_modeling_vs_biological_mean_exp_nogrid.pdf",width = 8,height = 7.5)
 
 
 ggplot(combined_stats,aes(x=rmse,col=type,fill=type)) +
 	geom_density(alpha=0.5)  +
 	 xlab("Root mean square error (RMSE)") + theme_bw()
-if(FALSE) ggsave("./supp_info/results_for_march_2019/figures/RMSE_modeling_vs_biological_density.pdf",width = 8,height = 3)
+if(FALSE) ggsave("./supp_info/results_for_may_2019/RMSE_modeling_vs_biological_density.pdf",width = 8,height = 3)
 
+
+# compare: model vs data RMSE error and time_course_A vs time_course_B RMSE -- overall
+
+ggplot(combined_stats,aes(x=type,y=rmse,fill=type)) +
+	geom_boxplot()  + coord_flip() + theme_bw() +
+	ggtitle("Compare model and experimental reproducibility",subtitle = "model fitting error versus biological reproduction error") +
+	xlab("Cell lines") + ylab("Root mean square error (RMSE)") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+if(FALSE) ggsave("./supp_info/results_for_may_2019/RMSE_randModel_modeling_vs_biological_mean_exp_nogrid.pdf",width = 8,height = 3)
+
+
+
+
+## 3.1.1 Based on RMSE ####
+# compare: plot the ratio of model_RMSE and data_RMSE
+library(tidyverse)
+data_rmse_by_prots <- data_rmse_r2_by_prots %>% as_tibble() %>% rename(data_rmse = rmse) %>% select(cell_line,markers,data_rmse)
+model_rmse_by_prots <- model_rmse_r2_by_prots %>% as_tibble() %>% rename(model_rmse = rmse) %>% select(cell_line,markers,model_rmse)
+
+RMSE_ratio  <- data_rmse_by_prots %>% full_join(x = .,y=model_rmse_by_prots,by=c("cell_line","markers"))
+
+RMSE_ratio <- RMSE_ratio %>% mutate(rmse_ratio=model_rmse/data_rmse)
+
+RMSE_ratio %>%
+	ggplot(aes(x=cell_line,y=rmse_ratio)) +
+	geom_boxplot()  + coord_flip() + theme_bw() +
+	ggtitle("Model and Data RMSE ratio",subtitle = "modelling error compared to data reproducability") +
+	xlab("Cell lines") + ylab("RMSE_model / RMSE_data") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + geom_hline(yintercept = 1,color="navyblue")
+if(FALSE) ggsave("./supp_info/results_for_march_2019/figures/RMSE_ratio_modeling_vs_biological_boxplot.pdf",width = 8,height = 7.5)
 
 ##### 3.1.2 Pick some example and plot ####
 library(tidyr)
