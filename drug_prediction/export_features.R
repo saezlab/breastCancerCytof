@@ -1,8 +1,11 @@
 # export features
 
+# revision: 01.07.2019
+# - unify the timepoints of the predictions
+# - use the best parameters that was obtained by the MFu sampling after the initial optimisation
+
 library(multiCellNOpt)
-library(plyr)
-library(dplyr)
+library(tidyverse)
 
 # calibrated_model_files = list.files("./data/models/pkn_v2_midas_v2/outputs/","*.RDS",full.names = T)
 calibrated_model_files = list.files("./data/models/pkn_v4_midas_v4/outputs/","*.RDS",full.names = T)
@@ -23,12 +26,25 @@ names(calibrated_models) = gsub(".RDS","",basename(calibrated_model_files))
 ### Model features 1: parameters -----------------------------------------------
 # we export the estimated model parameters (k and tau) for each cell-lines.
 
-feature_table_1 = data.frame()
-feature_table_1 = ldply(calibrated_models,function(M){
-	M$ode_parameters$parValues[M$ode_parameters$index_opt_pars]
-},.id = "cell_line")
 
-save(feature_table_1,file=paste0(feature_folder,"/feature_table_1_raw_parameters.RData"))
+# first export the parameters found in the optimisation:
+feature_table_1 <-  calibrated_models %>% map_dfr(function(M){
+	pars = data.frame(as.list(M$ode_parameters$parValues[M$ode_parameters$index_opt_pars]))
+}) %>% bind_cols(tibble(cell_line=names(calibrated_models)))
+
+
+write_rds(feature_table_1, path = paste0(feature_folder,"/ft_1_raw_parameters_optimised.rds"))
+
+
+# import sampling parameters
+mfu_parameters <- read_rds('./data/models/pkn_v4_midas_v4/parameter_samplings_QC.RDS') %>% as_tibble()
+
+# find the parameters with smallest fobj for each cell-line.
+feature_table_1_2 = mfu_parameters %>%
+	group_by(cell_line) %>% top_n(1,-fobj) %>%
+	select(cell_line,everything(),-fobj,-rel_fobj,-sampling_id,-run_id,-starts_with("x0"))
+
+write_rds(feature_table_1_2, path = paste0(feature_folder,"/ft_2_raw_parameters_mfu.rds"))
 
 
 
