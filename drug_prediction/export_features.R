@@ -36,6 +36,7 @@ feature_table_1 <-  calibrated_models %>% map_dfr(function(M){
 write_rds(feature_table_1, path = paste0(feature_folder,"/ft_1_raw_parameters_optimised.rds"))
 
 
+### Model features 1.2: best parameters found during MFU_sampling---------------
 # import sampling parameters
 mfu_parameters <- read_rds('./data/models/pkn_v4_midas_v4/parameter_samplings_QC.RDS') %>% as_tibble()
 
