@@ -6,7 +6,7 @@ getReactionActivity = function( self = NULL, timeSignals = NULL, trfType=as.char
 	if(!is.null(timeSignals)){
 		# merge the timeSignals with the time from the data.
 		# we need coinciding simulation and data time.
-		tsim = sort(unique(c(timeSignals,unlist(lapply(self$exps,function(x)x$timepoints)))))
+		tsim = sort(timeSignals)
 	}else tsim = self$exps$timepoints
 
 	trfParams = self$ode_parameters$get_reactionParameters()
