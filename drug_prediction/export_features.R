@@ -49,92 +49,11 @@ write_rds(feature_table_1_2, path = paste0(feature_folder,"/ft_2_raw_parameters_
 
 
 
-### Model features 1.5: parameter variance -----------------------------------------------
-# we export the estimated model parameters variance a coeff of variation for each cell-lines.
-
-
-sampling_df = readRDS("./data/models/pkn_v4_midas_v4/mfuSampling/00.estim_params_collected_v2.RDS")
-sampling_df_qc = sampling_df[sampling_df$rel_fobj<1.1,]
-
-parameter_columns = 2:140
-
-feature_table_par_sd = ddply(sampling_df_qc,.(cell_line),function(M){
-	par_sample = M[,parameter_columns]
-	apply(par_sample,2,sd)
-},.id = "cell_line")
-
-colnames(feature_table_par_sd)[parameter_columns] = paste0("sd_",colnames(feature_table_par_sd)[parameter_columns])
-
-save(feature_table_par_sd,file=paste0(feature_folder,"feature_table_par_sd.RData"))
-
-feature_table_par_CoV = ddply(sampling_df_qc,.(cell_line),function(M){
-	par_sample = M[,parameter_columns]
-	apply(par_sample,2,function(x)sd(x)/mean(x))
-},.id = "cell_line")
-colnames(feature_table_par_CoV)[parameter_columns] = paste0("CoV_",colnames(feature_table_par_CoV)[parameter_columns])
-
-save(feature_table_par_CoV,file=paste0(feature_folder,"feature_table_par_CoV.RData"))
-
-
-
-
-
-### Model features 2: edge activity --------------------------------------------
-# compute for each edge the strengh of the interaction by computing the value of the
-# tranfer function (uses the edge parameters and input nodes) over time, then
-# takes the mean activity over time for each experiment. Finally we take the maximum
-# among each experiment.
-source("../KinaseLibraryScan/R/getReactionActivity.R")
-# model = calibrated_models[[1]]
-# stat = "meanActivity"
-# tau_threshold = 1e-3
-transfer_functions_to_feature = function(model,stat=c("meanActivity","AUC"), tau_threshold = 1e-3){
-
-	stat = match.arg(stat)
-	reacData = getReactionActivity_logicModel(self = model)
-
-	#k2color <- colorRamp(RColorBrewer::brewer.pal(7,"Greys"))
-
-	# reacData$summary contains the activity of the reaction averaged over time.
-	# average computed by area under curve and mean value over time
-	# computes the median over all experiments and timepoint:
-	max_stat = ddply(reacData$summary,.(reacID,modelName),function(df){
-		#browser()
-		max_stat = median(df[,stat])
-		})
-
-	pre_features = max_stat$V1
-	names(pre_features) = as.character(max_stat$reacID)
-
-	tau_pars = model$ode_parameters$parValues[model$ode_parameters$index_tau]
-	reacs = as.character(max_stat$reacID)
-
-	get_downstream_node_name = function(reacID){
-		strsplit(reacID,split = "=")[[1]][[2]]
-	}
-	#i=1
-	features = pre_features
-	for(i in seq_along(reacs)){
-		outnode = get_downstream_node_name(reacs[[i]])
-		outnode_tau = tau_pars[paste0("tau_",outnode)]
-		if(outnode_tau <= tau_threshold){
-			features[reacs[i]] = 0
-		}
-	}
-	return(features)
-
-}
-
-feature_table_2 = ldply(calibrated_models,function(M){
-	features = transfer_functions_to_feature(model = M,stat = "meanActivity", tau_threshold = 1e-3)
-},.id = "cell_line" )
-save(feature_table_2,file=paste0(feature_folder,"/feature_table_2_edge_mean_activity.RData"))
-
-
-## Feature 2 worked pretty well.
 
 
 ### Model feautures 2.2 : timecourse edge strenght -----------------------------
+source("../KinaseLibraryScan/R/getReactionActivity.R")
+
 if(FALSE){
 	timecourse_strength_to_feature = function(model){
 		reacData = getReactionActivity_logicModel(self = model)
