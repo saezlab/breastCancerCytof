@@ -25,6 +25,8 @@ sampling_df_qc = sampling_df[sampling_df$rel_fobj<1.1,]
 # save data for marco:
 if(FALSE) saveRDS(sampling_df_qc,"./data/models/pkn_v4_midas_v4/parameter_samplings_QC.RDS")
 
+
+
 # for consistency, we also add the parameter vector, that was the result of the initial training.
 # performance could be worse, ma sure not to rule out.
 get_calibrated_model_parameters = function(modelFolder ="./data/models/pkn_v4_midas_v4/outputs/" ){
@@ -76,7 +78,8 @@ par_stats = sampling_df_qc_m %>% group_by(cell_line,parameter) %>%
 			   ) %>%
 	mutate(CL_cov = CL_sd/CL_mean,
 		   CL_cov_best = CL_sd/CL_best,
-		   CL_cov_optim = CL_sd/CL_optim)
+		   CL_cov_optim = CL_sd/CL_optim
+		   )
 
 
 

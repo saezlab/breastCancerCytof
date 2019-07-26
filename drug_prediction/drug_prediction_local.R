@@ -125,11 +125,6 @@ par_res = llply(interesting_drugs_ids[1:4], function(idrug){
 
 
 
-
-
-
-
-
 for(idrug in 1:nrow(common_IC50_matrix)){
 
 

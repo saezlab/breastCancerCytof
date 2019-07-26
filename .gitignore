@@ -54,4 +54,5 @@ rsconnect/
 data/*
 !data/pkn/*.sif
 
+Macau/BREAST_CYTOF/*
 

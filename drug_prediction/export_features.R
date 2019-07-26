@@ -50,14 +50,13 @@ write_rds(feature_table_1_2, path = paste0(feature_folder,"/ft_2_raw_parameters_
 
 
 
-
 ### Model feautures 2.2 : timecourse edge strenght -----------------------------
 source("./drug_prediction/getReactionActivity.R")
 base_time = c(0,5.5,7,9,13,17,23,30,40,60)
 
 
 # update the calibrated models with the best parameters found
-mfu_parameters <- read_rds('./data/models/pkn_v4_midas_v4/parameter_samplings_QC.RDS') %>% as_tibble()
+	mfu_parameters <- read_rds('./data/models/pkn_v4_midas_v4/parameter_samplings_QC.RDS') %>% as_tibble()
 
 # find the parameters with smallest fobj for each cell-line.
 feature_table_1_2 = mfu_parameters %>%
